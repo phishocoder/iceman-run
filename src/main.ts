@@ -180,7 +180,7 @@ class AudioEngine {
   private step = 0;
 
   constructor() {
-    this.master.gain.value = 0.18;
+    this.master.gain.value = 0.36;
     this.master.connect(this.audioContext.destination);
   }
 
@@ -197,22 +197,29 @@ class AudioEngine {
   }
 
   setMuted(muted: boolean): void {
-    this.master.gain.setTargetAtTime(muted ? 0.0001 : 0.18, this.audioContext.currentTime, 0.02);
+    this.master.gain.setTargetAtTime(muted ? 0.0001 : 0.36, this.audioContext.currentTime, 0.02);
+  }
+
+  powerOn(): void {
+    this.tone(277.18, 0.12, "square", 0.16);
+    window.setTimeout(() => this.tone(415.3, 0.12, "square", 0.16), 95);
+    window.setTimeout(() => this.tone(554.37, 0.18, "square", 0.18), 190);
+    window.setTimeout(() => this.noise(0.07, 0.08), 260);
   }
 
   hit(): void {
-    this.noise(0.16, 0.12);
-    this.tone(92.5, 0.1, "sawtooth", 0.08);
+    this.noise(0.16, 0.18);
+    this.tone(92.5, 0.12, "sawtooth", 0.12);
   }
 
   collect(): void {
-    this.tone(830.61, 0.045, "square", 0.09);
-    window.setTimeout(() => this.tone(987.77, 0.055, "square", 0.075), 52);
+    this.tone(830.61, 0.06, "square", 0.14);
+    window.setTimeout(() => this.tone(987.77, 0.075, "square", 0.12), 58);
   }
 
   melt(): void {
     [277.18, 369.99, 554.37, 739.99].forEach((note, index) => {
-      window.setTimeout(() => this.tone(note, 0.09, "square", 0.09), index * 40);
+      window.setTimeout(() => this.tone(note, 0.12, "square", 0.16), index * 48);
     });
   }
 
@@ -221,9 +228,9 @@ class AudioEngine {
     const icyLead = [415.3, 0, 493.88, 0, 622.25, 554.37, 493.88, 0, 369.99, 0, 415.3, 466.16, 493.88, 0, 369.99, 0];
     const index = this.step % icyLead.length;
     const root = roots[Math.floor(this.step / 8) % roots.length];
-    if (this.step % 4 === 0) this.tone(root, 0.11, "triangle", 0.075);
-    if (icyLead[index]) this.tone(icyLead[index], 0.055, "square", 0.045);
-    if (this.step % 8 === 2 || this.step % 8 === 6) this.noise(0.025, 0.045);
+    if (this.step % 4 === 0) this.tone(root, 0.14, "triangle", 0.11);
+    if (icyLead[index]) this.tone(icyLead[index], 0.07, "square", 0.075);
+    if (this.step % 8 === 2 || this.step % 8 === 6) this.noise(0.03, 0.07);
     this.step += 1;
   }
 
@@ -649,8 +656,11 @@ async function ensureAudio(startEnabled: boolean): Promise<void> {
   soundEnabled = startEnabled;
   audio.setMuted(!soundEnabled);
   audioBtn.setAttribute("aria-pressed", String(soundEnabled));
-  audioBtn.textContent = soundEnabled ? "Sound on" : "Sound off";
-  if (soundEnabled) await audio.start();
+  audioBtn.textContent = soundEnabled ? "Sound on ✓" : "Sound off";
+  if (soundEnabled) {
+    await audio.start();
+    audio.powerOn();
+  }
 }
 
 async function startGame(withSound: boolean): Promise<void> {
@@ -732,6 +742,7 @@ pauseBtn.addEventListener("click", togglePause);
 audioBtn.addEventListener("click", () => {
   soundEnabled = !soundEnabled;
   void ensureAudio(soundEnabled);
+  if (soundEnabled) toast("sound check", 800, "#f4cf63");
 });
 
 window.addEventListener("keydown", (event) => {
