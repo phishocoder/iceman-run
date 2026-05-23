@@ -1,113 +1,89 @@
 import "./styles.css";
 
 type GameState = "ready" | "playing" | "paused" | "over";
-type Lane = 0 | 1 | 2;
-type HazardKind = "janice" | "bot" | "fallingIce" | "pap";
-type PickupKind = "record" | "spark" | "shield" | "tower";
+type Lane = 0 | 1 | 2 | 3;
+type FallingKind = "talk" | "camera" | "record" | "spotlight";
 
-interface Actor {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-interface Hazard extends Actor {
+interface Falling {
   lane: Lane;
+  y: number;
   speed: number;
-  kind: HazardKind;
+  kind: FallingKind;
   wobble: number;
 }
 
-interface Pickup extends Actor {
-  lane: Lane;
-  speed: number;
-  kind: PickupKind;
-  spin: number;
-}
-
-interface Particle {
+interface Spark {
   x: number;
   y: number;
   vx: number;
   vy: number;
   life: number;
   color: string;
-  size: number;
-}
-
-interface Toast {
-  text: string;
-  life: number;
-  color: string;
 }
 
 const WIDTH = 1024;
 const HEIGHT = 576;
-const GROUND_Y = 452;
-const lanes = [WIDTH * 0.28, WIDTH * 0.5, WIDTH * 0.72] as const;
-const bestKey = "iceman-run-best";
-const levelNames = ["Ice Block Drop", "CN Tower Freeze", "Bot Farm Burnout", "Late Night Victory"];
+const lanes = [210, 410, 610, 810] as const;
+const bpm = 112.75;
+const stepMs = 60_000 / bpm / 4;
+const bestKey = "janice-room-best";
 
 const app = document.querySelector<HTMLDivElement>("#app");
-
-if (!app) {
-  throw new Error("App root not found");
-}
+if (!app) throw new Error("App root not found");
 
 function mustQuery<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
-  if (!element) throw new Error(`Required element missing: ${selector}`);
+  if (!element) throw new Error(`Missing required element: ${selector}`);
   return element;
 }
 
 app.innerHTML = `
   <main class="shell">
-    <section class="game-card" aria-label="ICEMAN RUN arcade game">
+    <section class="game-card" aria-label="Janice STFU 16-bit arcade game">
       <header class="topbar">
         <div class="brand-block">
           <span class="mark" aria-hidden="true">◆</span>
           <div>
-            <p class="kicker">Toronto ice-block arcade</p>
-            <h1>ICEMAN RUN</h1>
+            <p class="kicker">16-bit private-room arcade</p>
+            <h1>JANICE ROOM</h1>
           </div>
         </div>
         <div class="stat-grid" aria-live="polite">
           <span><b id="score">0</b><small>score</small></span>
           <span><b id="best">0</b><small>best</small></span>
           <span><b id="combo">x1</b><small>combo</small></span>
-          <span><b id="ice">3</b><small>ice</small></span>
-          <span><b id="reveal">0%</b><small>reveal</small></span>
+          <span><b id="ice">3</b><small>focus</small></span>
+          <span><b id="reveal">0%</b><small>room</small></span>
         </div>
       </header>
 
       <div class="stage-wrap">
-        <canvas id="game" width="${WIDTH}" height="${HEIGHT}" aria-label="Playable 8-bit Iceman arcade game"></canvas>
+        <canvas id="game" width="${WIDTH}" height="${HEIGHT}" aria-label="Playable 16-bit party room game"></canvas>
         <div class="overlay" id="overlay">
           <div class="overlay-panel">
-            <p class="episode" id="episodeLabel">Episode 1: melt the block, dodge the chatter.</p>
-            <p id="stateLabel">Swipe lanes. Collect ice records and heat sparks. Hit <b>Melt</b> when the city gets loud.</p>
+            <p class="episode" id="episodeLabel">One room. One performance. Too much commentary.</p>
+            <p id="stateLabel">Move under records and spotlights. Dodge talk bubbles and camera flashes. Charge <b>Silence</b>, then clear the room.</p>
             <button id="primaryBtn" type="button">Start with sound</button>
             <button id="quietBtn" type="button">Start quiet</button>
-            <p class="hint">Controls: swipe or arrows to move. Melt clears hazards when charged. Audio starts only after you tap.</p>
+            <p class="hint">Swipe or tap arrows to move. Tap Silence when charged. Tempo locked to the uploaded memo: 112.75 BPM.</p>
           </div>
         </div>
       </div>
 
-      <div class="meter-row" aria-label="Ability meters">
+      <div class="meter-row" aria-label="Ability meter">
         <label>
-          <span>Melt charge</span>
+          <span>Silence charge</span>
           <progress id="meltMeter" max="100" value="0"></progress>
         </label>
         <label>
-          <span>Shield</span>
+          <span>Room control</span>
           <progress id="shieldMeter" max="100" value="0"></progress>
         </label>
       </div>
 
       <div class="controls" aria-label="Game controls">
         <button id="leftBtn" type="button" aria-label="Move left">◀</button>
-        <button id="meltBtn" type="button">Melt</button>
+        <button id="meltBtn" type="button">Silence</button>
         <button id="pauseBtn" type="button">Pause</button>
         <button id="audioBtn" type="button" aria-pressed="false">Sound off</button>
         <button id="rightBtn" type="button" aria-label="Move right">▶</button>
@@ -121,10 +97,10 @@ const context = canvas.getContext("2d");
 const scoreEl = mustQuery<HTMLElement>("#score");
 const bestEl = mustQuery<HTMLElement>("#best");
 const comboEl = mustQuery<HTMLElement>("#combo");
-const iceEl = mustQuery<HTMLElement>("#ice");
-const revealEl = mustQuery<HTMLElement>("#reveal");
-const meltMeter = mustQuery<HTMLProgressElement>("#meltMeter");
-const shieldMeter = mustQuery<HTMLProgressElement>("#shieldMeter");
+const focusEl = mustQuery<HTMLElement>("#ice");
+const roomEl = mustQuery<HTMLElement>("#reveal");
+const silenceMeter = mustQuery<HTMLProgressElement>("#meltMeter");
+const roomMeter = mustQuery<HTMLProgressElement>("#shieldMeter");
 const overlay = mustQuery<HTMLDivElement>("#overlay");
 const episodeLabel = mustQuery<HTMLElement>("#episodeLabel");
 const stateLabel = mustQuery<HTMLElement>("#stateLabel");
@@ -132,71 +108,45 @@ const primaryBtn = mustQuery<HTMLButtonElement>("#primaryBtn");
 const quietBtn = mustQuery<HTMLButtonElement>("#quietBtn");
 const leftBtn = mustQuery<HTMLButtonElement>("#leftBtn");
 const rightBtn = mustQuery<HTMLButtonElement>("#rightBtn");
-const meltBtn = mustQuery<HTMLButtonElement>("#meltBtn");
+const silenceBtn = mustQuery<HTMLButtonElement>("#meltBtn");
 const pauseBtn = mustQuery<HTMLButtonElement>("#pauseBtn");
 const audioBtn = mustQuery<HTMLButtonElement>("#audioBtn");
 
-if (!context) {
-  throw new Error("2D canvas context is unavailable");
-}
-
+if (!context) throw new Error("2D canvas unavailable");
 const ctx = context;
 ctx.imageSmoothingEnabled = false;
 
 let state: GameState = "ready";
 let lane: Lane = 1;
 let score = 0;
-let bestScore = Number(window.localStorage.getItem(bestKey) ?? 0);
+let best = Number(localStorage.getItem(bestKey) ?? 0);
 let combo = 1;
-let ice = 3;
-let reveal = 0;
-let melt = 0;
-let shield = 0;
-let level = 0;
+let focus = 3;
+let room = 0;
+let silence = 0;
 let spawnTimer = 0;
-let pickupTimer = 0;
-let waveTimer = 0;
-let shake = 0;
-let skylineShift = 0;
 let lastTime = 0;
-let soundEnabled = false;
-let hazards: Hazard[] = [];
-let pickups: Pickup[] = [];
-let particles: Particle[] = [];
-let toasts: Toast[] = [];
+let beatPulse = 0;
+let shake = 0;
+let soundOn = false;
+let falling: Falling[] = [];
+let sparks: Spark[] = [];
 let audio: AudioEngine | null = null;
-
-const player: Actor = {
-  x: lanes[lane] - 28,
-  y: GROUND_Y - 74,
-  width: 56,
-  height: 74
-};
 
 class AudioEngine {
   private readonly audioContext = new AudioContext();
   private readonly master = this.audioContext.createGain();
-  private readonly musicBus = this.audioContext.createGain();
-  private readonly drumBus = this.audioContext.createGain();
-  private readonly fxBus = this.audioContext.createGain();
   private timer: number | undefined;
   private step = 0;
 
   constructor() {
-    this.master.gain.value = 0.42;
-    this.musicBus.gain.value = 0.72;
-    this.drumBus.gain.value = 0.95;
-    this.fxBus.gain.value = 0.9;
-    this.musicBus.connect(this.master);
-    this.drumBus.connect(this.master);
-    this.fxBus.connect(this.master);
+    this.master.gain.value = 0.44;
     this.master.connect(this.audioContext.destination);
   }
 
   async start(): Promise<void> {
     await this.audioContext.resume();
-    if (this.timer) return;
-    this.timer = window.setInterval(() => this.playStep(), 115);
+    if (!this.timer) this.timer = window.setInterval(() => this.tick(), stepMs);
   }
 
   stop(): void {
@@ -206,106 +156,89 @@ class AudioEngine {
   }
 
   setMuted(muted: boolean): void {
-    this.master.gain.setTargetAtTime(muted ? 0.0001 : 0.42, this.audioContext.currentTime, 0.02);
+    this.master.gain.setTargetAtTime(muted ? 0.0001 : 0.44, this.audioContext.currentTime, 0.02);
   }
 
-  powerOn(): void {
-    [207.65, 277.18, 415.3, 554.37, 830.61].forEach((note, index) => {
-      window.setTimeout(() => this.tone(note, 0.09 + index * 0.012, "square", 0.18, this.fxBus), index * 72);
+  startCue(): void {
+    [220, 277.18, 369.99, 440, 554.37].forEach((note, index) => {
+      window.setTimeout(() => this.tone(note, 0.11, "square", 0.2), index * 82);
     });
-    window.setTimeout(() => this.snare(0.11, 0.18), 330);
-  }
-
-  hit(): void {
-    this.noise(0.16, 0.2, this.fxBus);
-    this.tone(92.5, 0.12, "sawtooth", 0.15, this.fxBus);
   }
 
   collect(): void {
-    this.tone(830.61, 0.06, "square", 0.16, this.fxBus);
-    window.setTimeout(() => this.tone(987.77, 0.075, "square", 0.14, this.fxBus), 58);
+    this.tone(880, 0.06, "square", 0.18);
+    window.setTimeout(() => this.tone(1108.73, 0.08, "square", 0.14), 55);
   }
 
-  melt(): void {
-    [277.18, 369.99, 554.37, 739.99].forEach((note, index) => {
-      window.setTimeout(() => this.tone(note, 0.13, "square", 0.19, this.fxBus), index * 48);
+  hit(): void {
+    this.noise(0.13, 0.22);
+    this.tone(110, 0.12, "sawtooth", 0.16);
+  }
+
+  silence(): void {
+    [554.37, 440, 369.99, 277.18].forEach((note, index) => {
+      window.setTimeout(() => this.tone(note, 0.14, "square", 0.21), index * 55);
     });
+    window.setTimeout(() => this.noise(0.09, 0.12), 250);
   }
 
-  private playStep(): void {
-    const roots = [138.59, 207.65, 164.81, 246.94]; // C#m, G#m, E, Emaj7 color without copying the hook.
-    const arp = [
-      554.37, 622.25, 830.61, 739.99,
-      415.3, 493.88, 622.25, 493.88,
-      329.63, 415.3, 493.88, 554.37,
-      493.88, 622.25, 830.61, 987.77
-    ];
-    const lead = [
-      0, 0, 739.99, 0, 622.25, 0, 554.37, 493.88,
-      0, 622.25, 0, 739.99, 830.61, 0, 622.25, 0,
-      0, 0, 554.37, 0, 493.88, 0, 415.3, 369.99,
-      0, 415.3, 0, 493.88, 554.37, 0, 493.88, 0
-    ];
-    const index = this.step % 32;
-    const root = roots[Math.floor(this.step / 8) % roots.length];
-
-    if (index % 8 === 0) this.kick();
-    if (index % 8 === 4) this.snare();
-    if (index % 2 === 1) this.hat();
-    if (index % 4 === 0) this.tone(root, 0.18, "triangle", 0.18, this.musicBus);
-    if (index % 2 === 0) this.tone(root * 2, 0.08, "square", 0.08, this.musicBus);
-    this.tone(arp[index % arp.length], 0.045, "square", index % 4 === 0 ? 0.11 : 0.075, this.musicBus);
-    if (lead[index] > 0) this.tone(lead[index], 0.1, "square", 0.12, this.musicBus);
+  private tick(): void {
+    const i = this.step % 32;
+    const bass = [138.59, 138.59, 207.65, 207.65, 164.81, 164.81, 246.94, 246.94];
+    const lead = [0, 554.37, 0, 622.25, 739.99, 0, 622.25, 0, 0, 493.88, 0, 554.37, 622.25, 0, 493.88, 0];
+    const arp = [277.18, 329.63, 415.3, 493.88, 329.63, 415.3, 554.37, 622.25];
+    if (i % 8 === 0) this.kick();
+    if (i % 8 === 4) this.snare();
+    if (i % 2 === 1) this.noise(0.018, 0.075);
+    if (i % 4 === 0) this.tone(bass[Math.floor(i / 4) % bass.length], 0.18, "triangle", 0.17);
+    this.tone(arp[i % arp.length], 0.045, "square", i % 4 === 0 ? 0.11 : 0.075);
+    if (lead[i % lead.length]) this.tone(lead[i % lead.length], 0.1, "square", 0.12);
     this.step += 1;
-  }
-
-  private tone(frequency: number, duration: number, type: OscillatorType, gainValue: number, destination: AudioNode): void {
-    const now = this.audioContext.currentTime;
-    const oscillator = this.audioContext.createOscillator();
-    const gain = this.audioContext.createGain();
-    oscillator.type = type;
-    oscillator.frequency.setValueAtTime(frequency, now);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(gainValue, now + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-    oscillator.connect(gain).connect(destination);
-    oscillator.start(now);
-    oscillator.stop(now + duration + 0.02);
   }
 
   private kick(): void {
     const now = this.audioContext.currentTime;
-    const oscillator = this.audioContext.createOscillator();
+    const osc = this.audioContext.createOscillator();
     const gain = this.audioContext.createGain();
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(120, now);
-    oscillator.frequency.exponentialRampToValueAtTime(42, now + 0.11);
-    gain.gain.setValueAtTime(0.26, now);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.13);
-    oscillator.connect(gain).connect(this.drumBus);
-    oscillator.start(now);
-    oscillator.stop(now + 0.14);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(116, now);
+    osc.frequency.exponentialRampToValueAtTime(44, now + 0.12);
+    gain.gain.setValueAtTime(0.28, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+    osc.connect(gain).connect(this.master);
+    osc.start(now);
+    osc.stop(now + 0.15);
   }
 
-  private snare(duration = 0.055, gainValue = 0.13): void {
-    this.noise(duration, gainValue, this.drumBus);
-    this.tone(196, duration, "triangle", gainValue * 0.55, this.drumBus);
+  private snare(): void {
+    this.noise(0.055, 0.16);
+    this.tone(196, 0.055, "triangle", 0.08);
   }
 
-  private hat(): void {
-    this.noise(0.018, 0.075, this.drumBus);
+  private tone(frequency: number, duration: number, type: OscillatorType, volume: number): void {
+    const now = this.audioContext.currentTime;
+    const osc = this.audioContext.createOscillator();
+    const gain = this.audioContext.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(frequency, now);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(volume, now + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    osc.connect(gain).connect(this.master);
+    osc.start(now);
+    osc.stop(now + duration + 0.02);
   }
 
-  private noise(duration: number, gainValue: number, destination: AudioNode): void {
+  private noise(duration: number, volume: number): void {
     const buffer = this.audioContext.createBuffer(1, this.audioContext.sampleRate * duration, this.audioContext.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < data.length; i += 1) data[i] = Math.random() * 2 - 1;
-    const source = this.audioContext.createBufferSource();
+    const src = this.audioContext.createBufferSource();
     const gain = this.audioContext.createGain();
-    gain.gain.value = gainValue;
-    source.buffer = buffer;
-    source.connect(gain).connect(destination);
-    source.start();
+    gain.gain.value = volume;
+    src.buffer = buffer;
+    src.connect(gain).connect(this.master);
+    src.start();
   }
 }
 
@@ -314,14 +247,14 @@ function rect(x: number, y: number, w: number, h: number, color: string): void {
   ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
 }
 
-function outline(x: number, y: number, w: number, h: number, color: string, line = 4): void {
-  rect(x, y, w, line, color);
-  rect(x, y + h - line, w, line, color);
-  rect(x, y, line, h, color);
-  rect(x + w - line, y, line, h, color);
+function stroke(x: number, y: number, w: number, h: number, color: string, s = 4): void {
+  rect(x, y, w, s, color);
+  rect(x, y + h - s, w, s, color);
+  rect(x, y, s, h, color);
+  rect(x + w - s, y, s, h, color);
 }
 
-function text(value: string, x: number, y: number, size = 18, color = "#f7f2d4", align: CanvasTextAlign = "left"): void {
+function label(value: string, x: number, y: number, size = 18, color = "#f7f2d4", align: CanvasTextAlign = "left"): void {
   ctx.fillStyle = color;
   ctx.font = `700 ${size}px "Courier New", monospace`;
   ctx.textAlign = align;
@@ -329,342 +262,176 @@ function text(value: string, x: number, y: number, size = 18, color = "#f7f2d4",
   ctx.fillText(value, Math.round(x), Math.round(y));
 }
 
-function drawBackground(delta: number): void {
-  skylineShift = (skylineShift + delta * (0.035 + level * 0.01)) % WIDTH;
-  const sky = ctx.createLinearGradient(0, 0, 0, HEIGHT);
-  sky.addColorStop(0, "#06101e");
-  sky.addColorStop(0.52, "#102b49");
-  sky.addColorStop(1, "#06101e");
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-  for (let i = 0; i < 95; i += 1) {
-    const x = (i * 67 + skylineShift * 0.25) % WIDTH;
-    const y = 26 + ((i * 29) % 170);
-    rect(x, y, i % 8 === 0 ? 5 : 3, i % 7 === 0 ? 5 : 3, i % 3 === 0 ? "#f4cf63" : "#9fe8ff");
-  }
-
-  drawMoonAndTower();
-
-  for (let i = -1; i < 15; i += 1) {
-    const x = i * 84 - (skylineShift * 0.72) % 84;
-    const height = 70 + ((i * 31) % 90);
-    rect(x, GROUND_Y - height, 62, height, "#09182a");
-    rect(x + 8, GROUND_Y - height + 16, 7, 7, "#f4cf63");
-    rect(x + 28, GROUND_Y - height + 34, 7, 7, "#64d8ff");
-    rect(x + 45, GROUND_Y - height + 56, 7, 7, "#f4cf63");
-  }
-
-  drawIceBlock();
-  rect(0, GROUND_Y, WIDTH, HEIGHT - GROUND_Y, "#12283a");
-  rect(0, GROUND_Y - 8, WIDTH, 8, "#d7f6ff");
-  rect(0, GROUND_Y, WIDTH, 8, "#75d8ff");
-  for (const laneX of lanes) {
-    rect(laneX - 3, GROUND_Y, 6, HEIGHT - GROUND_Y, "rgba(215,246,255,0.22)");
-  }
-  for (let x = -40; x < WIDTH; x += 72) {
-    rect(x - (skylineShift * 2.2) % 72, GROUND_Y - 14, 28, 5, "#f7f2d4");
-  }
-}
-
-function drawMoonAndTower(): void {
-  rect(800, 42, 78, 78, "rgba(244,207,99,0.08)");
-  rect(824, 52, 34, 54, "#f4cf63");
-  rect(838, 106, 6, 44, "#f4cf63");
-  rect(818, 148, 46, 7, "#8bd7ff");
-  rect(833, 155, 16, 120, "#8bd7ff");
-  rect(813, 208, 56, 10, "#f4cf63");
-}
-
-function drawIceBlock(): void {
-  const x = 54;
-  const y = 282;
-  const w = 196;
-  const h = 126;
-  rect(x, y, w, h, "rgba(130,232,255,0.18)");
-  outline(x, y, w, h, "#b9f3ff", 5);
-  rect(x + 14, y + 14, w - 28, 20, "rgba(255,255,255,0.28)");
-  const visibleLetters = Math.min(6, Math.floor(reveal / 16.6));
-  const letters = "MAY 15";
-  text("MELT THE DATE", x + 22, y + 42, 16, "#f4cf63");
-  text(letters.slice(0, visibleLetters).padEnd(6, "■"), x + 28, y + 70, 26, "#ffffff");
-}
-
-function drawPlayer(delta: number): void {
-  player.x += (lanes[lane] - player.width / 2 - player.x) * Math.min(0.32, delta / 42);
-  const bob = Math.sin(performance.now() / 90) * 3;
-  const x = player.x;
-  const y = player.y + bob;
-
-  if (shield > 0) {
-    outline(x - 10, y - 10, player.width + 20, player.height + 20, "rgba(139,215,255,0.75)", 4);
-  }
-
-  rect(x + 10, y + 22, 38, 44, "#111820");
-  rect(x + 14, y + 25, 30, 22, "#1d2735");
-  rect(x + 7, y + 32, 12, 25, "#090d12");
-  rect(x + 42, y + 32, 12, 25, "#090d12");
-  rect(x + 14, y + 2, 28, 24, "#b77755");
-  rect(x + 10, y, 36, 9, "#0a0d12");
-  rect(x + 15, y + 11, 11, 5, "#05070a");
-  rect(x + 32, y + 11, 11, 5, "#05070a");
-  rect(x + 9, y + 26, 40, 12, "#f4cf63");
-  rect(x + 18, y + 64, 11, 12, "#d7f6ff");
-  rect(x + 36, y + 64, 11, 12, "#d7f6ff");
-}
-
-function drawHazard(hazard: Hazard): void {
-  const x = hazard.x + Math.sin(hazard.wobble) * 5;
-  const y = hazard.y;
-  if (hazard.kind === "janice") {
-    rect(x, y + 10, 92, 44, "#eef6ff");
-    outline(x, y + 10, 92, 44, "#101a2d", 4);
-    rect(x + 18, y + 54, 15, 15, "#eef6ff");
-    text("STFU?", x + 12, y + 22, 19, "#101a2d");
-    return;
-  }
-  if (hazard.kind === "bot") {
-    rect(x + 12, y + 4, 58, 58, "#182338");
-    outline(x + 12, y + 4, 58, 58, "#ff5f79", 4);
-    rect(x + 24, y + 22, 10, 10, "#ff5f79");
-    rect(x + 48, y + 22, 10, 10, "#ff5f79");
-    text("BOT", x + 24, y + 42, 13, "#f7f2d4");
-    return;
-  }
-  if (hazard.kind === "pap") {
-    rect(x + 8, y + 12, 70, 42, "#111820");
-    rect(x + 22, y, 32, 22, "#2d3848");
-    rect(x + 58, y + 24, 22, 18, "#f4cf63");
-    rect(x + 32, y + 23, 18, 18, "#8bd7ff");
-    text("FLASH", x + 11, y + 58, 12, "#ff5f79");
-    return;
-  }
-  rect(x + 26, y, 28, 68, "#92edff");
-  rect(x + 33, y + 8, 12, 48, "#e4fbff");
-  rect(x + 19, y + 55, 42, 12, "#5ecce6");
-}
-
-function drawPickup(pickup: Pickup): void {
-  const x = pickup.x + Math.sin(pickup.spin) * 7;
-  const y = pickup.y;
-  if (pickup.kind === "record") {
-    rect(x, y, 48, 48, "#f4cf63");
-    rect(x + 8, y + 8, 32, 32, "#101a2d");
-    rect(x + 20, y + 20, 8, 8, "#f4cf63");
-    return;
-  }
-  if (pickup.kind === "spark") {
-    rect(x + 20, y, 10, 52, "#ff9f43");
-    rect(x + 8, y + 16, 34, 10, "#f4cf63");
-    rect(x + 16, y + 8, 18, 34, "#fff3a1");
-    return;
-  }
-  if (pickup.kind === "shield") {
-    outline(x + 5, y + 2, 42, 48, "#8bd7ff", 5);
-    rect(x + 16, y + 14, 20, 20, "#d7f6ff");
-    return;
-  }
-  rect(x + 16, y, 12, 56, "#8bd7ff");
-  rect(x + 4, y + 20, 36, 8, "#f4cf63");
-}
-
-function drawParticles(delta: number): void {
-  particles = particles.filter((particle) => {
-    particle.life -= delta;
-    particle.x += particle.vx * (delta / 1000);
-    particle.y += particle.vy * (delta / 1000);
-    particle.vy += 220 * (delta / 1000);
-    rect(particle.x, particle.y, particle.size, particle.size, particle.color);
-    return particle.life > 0;
-  });
-}
-
-function drawToasts(delta: number): void {
-  toasts = toasts.filter((toast, index) => {
-    toast.life -= delta;
-    text(toast.text, WIDTH / 2, 76 + index * 30, 22, toast.color, "center");
-    return toast.life > 0;
-  });
-}
-
 function update(delta: number): void {
   if (state !== "playing") return;
-
-  const difficulty = 1 + level * 0.18 + score / 20000;
   spawnTimer -= delta;
-  pickupTimer -= delta;
-  waveTimer += delta;
+  room = Math.min(100, room + delta * 0.004 + combo * 0.002);
+  silence = Math.min(100, silence + delta * 0.006);
   score += delta * 0.035 * combo;
-  reveal = Math.min(100, reveal + delta * 0.0035);
-  shield = Math.max(0, shield - delta * 0.012);
-  shake = Math.max(0, shake - delta * 0.02);
-  level = Math.min(levelNames.length - 1, Math.floor(score / 3500));
+  beatPulse = Math.max(0, beatPulse - delta * 0.003);
+  shake = Math.max(0, shake - delta * 0.04);
 
   if (spawnTimer <= 0) {
-    spawnTimer = Math.max(390, 940 - difficulty * 85);
-    spawnHazard();
+    spawnTimer = Math.max(420, 880 - room * 3);
+    spawnFalling();
   }
 
-  if (pickupTimer <= 0) {
-    pickupTimer = 620 + Math.random() * 420;
-    spawnPickup();
-  }
-
-  hazards = hazards.filter((hazard) => {
-    hazard.y += hazard.speed * difficulty * (delta / 1000);
-    hazard.wobble += delta * 0.006;
-    if (intersects(player, hazard)) {
-      collide(hazard);
+  falling = falling.filter((item) => {
+    item.y += item.speed * (delta / 1000);
+    item.wobble += delta * 0.006;
+    if (item.y > 392 && item.y < 478 && item.lane === lane) {
+      item.kind === "record" || item.kind === "spotlight" ? collect(item.kind) : hit();
       return false;
     }
-    return hazard.y < HEIGHT + 90;
+    return item.y < HEIGHT + 70;
   });
 
-  pickups = pickups.filter((pickup) => {
-    pickup.y += pickup.speed * (delta / 1000);
-    pickup.spin += delta * 0.01;
-    if (intersects(player, pickup)) {
-      collect(pickup);
-      return false;
-    }
-    return pickup.y < HEIGHT + 80;
-  });
-
-  if (waveTimer > 8000) {
-    waveTimer = 0;
-    toast(`${levelNames[level]} wave`, 1400, "#8bd7ff");
-  }
-}
-
-function spawnHazard(): void {
-  const hazardLane = Math.floor(Math.random() * lanes.length) as Lane;
-  const kinds: HazardKind[] = level >= 2 ? ["janice", "bot", "fallingIce", "pap"] : ["janice", "fallingIce", "pap"];
-  const kind = kinds[Math.floor(Math.random() * kinds.length)];
-  hazards.push({
-    lane: hazardLane,
-    x: lanes[hazardLane] - 44,
-    y: -82,
-    width: kind === "janice" ? 92 : 80,
-    height: kind === "fallingIce" ? 68 : 62,
-    speed: 185 + Math.random() * 90 + level * 16,
-    kind,
-    wobble: Math.random() * 8
+  sparks = sparks.filter((spark) => {
+    spark.life -= delta;
+    spark.x += spark.vx * (delta / 1000);
+    spark.y += spark.vy * (delta / 1000);
+    spark.vy += 180 * (delta / 1000);
+    return spark.life > 0;
   });
 }
 
-function spawnPickup(): void {
-  const pickupLane = Math.floor(Math.random() * lanes.length) as Lane;
+function spawnFalling(): void {
   const roll = Math.random();
-  const kind: PickupKind = roll > 0.9 ? "shield" : roll > 0.72 ? "spark" : roll > 0.58 ? "tower" : "record";
-  pickups.push({
-    lane: pickupLane,
-    x: lanes[pickupLane] - 24,
-    y: -58,
-    width: 52,
-    height: 56,
-    speed: 160 + level * 12,
+  const kind: FallingKind = roll > 0.76 ? "record" : roll > 0.62 ? "spotlight" : roll > 0.28 ? "talk" : "camera";
+  const itemLane = Math.floor(Math.random() * lanes.length) as Lane;
+  falling.push({
+    lane: itemLane,
+    y: -70,
+    speed: 170 + room * 1.4 + Math.random() * 55,
     kind,
-    spin: Math.random() * 6
+    wobble: Math.random() * 6
   });
 }
 
-function collide(hazard: Hazard): void {
-  burst(player.x + player.width / 2, player.y + 28, "#ff5f79", 18);
-  shake = 8;
-  if (shield > 0) {
-    shield = Math.max(0, shield - 42);
-    combo = Math.max(1, combo - 1);
-    toast("shield ate the noise", 900, "#8bd7ff");
-    audio?.collect();
-    return;
-  }
-  ice -= 1;
-  combo = 1;
-  melt = Math.max(0, melt - 16);
-  reveal = Math.max(0, reveal - 5);
-  toast(hazard.kind === "janice" ? "too much chatter" : "ice cracked", 900, "#ff8aa0");
-  audio?.hit();
-  if (ice <= 0) endGame();
-}
-
-function collect(pickup: Pickup): void {
-  burst(pickup.x + 24, pickup.y + 24, pickup.kind === "spark" ? "#ffcf63" : "#8bd7ff", 14);
-  combo = Math.min(12, combo + 1);
+function collect(kind: "record" | "spotlight"): void {
+  const x = lanes[lane];
+  burst(x, 420, kind === "record" ? "#f4cf63" : "#8bd7ff");
+  combo = Math.min(9, combo + 1);
+  score += kind === "record" ? 240 * combo : 420 * combo;
+  silence = Math.min(100, silence + (kind === "record" ? 14 : 24));
+  room = Math.min(100, room + (kind === "record" ? 4 : 8));
+  beatPulse = 1;
   audio?.collect();
-  if (pickup.kind === "record") {
-    score += 260 * combo;
-    reveal = Math.min(100, reveal + 3.5);
-    melt = Math.min(100, melt + 10);
-    toast("ice record +combo", 700, "#f4cf63");
-  } else if (pickup.kind === "spark") {
-    score += 160 * combo;
-    melt = Math.min(100, melt + 28);
-    toast("heat spark charged", 700, "#ffcf63");
-  } else if (pickup.kind === "shield") {
-    shield = 100;
-    toast("blue shield live", 900, "#8bd7ff");
-  } else {
-    score += 420 * combo;
-    reveal = Math.min(100, reveal + 8);
-    melt = Math.min(100, melt + 16);
-    toast("CN checkpoint", 900, "#d7f6ff");
-  }
+  if (room >= 100) endGame(true);
 }
 
-function triggerMelt(): void {
-  if (state !== "playing" || melt < 100) return;
-  melt = 0;
-  reveal = Math.min(100, reveal + 18);
-  score += hazards.length * 180 * combo;
-  hazards.forEach((hazard) => burst(hazard.x + 34, hazard.y + 28, "#ffcf63", 18));
-  hazards = [];
-  shake = 12;
-  toast("MELT MODE: city cleared", 1100, "#f4cf63");
-  audio?.melt();
+function hit(): void {
+  burst(lanes[lane], 420, "#ff5f79");
+  focus -= 1;
+  combo = 1;
+  room = Math.max(0, room - 8);
+  shake = 8;
+  audio?.hit();
+  if (focus <= 0) endGame(false);
 }
 
-function intersects(a: Actor, b: Actor): boolean {
-  return a.x + 8 < b.x + b.width - 8 && a.x + a.width - 8 > b.x && a.y + 8 < b.y + b.height && a.y + a.height > b.y + 8;
+function useSilence(): void {
+  if (state !== "playing" || silence < 100) return;
+  silence = 0;
+  score += falling.filter((item) => item.kind === "talk" || item.kind === "camera").length * 180;
+  falling = falling.filter((item) => item.kind === "record" || item.kind === "spotlight");
+  room = Math.min(100, room + 18);
+  beatPulse = 1;
+  shake = 10;
+  audio?.silence();
+  if (room >= 100) endGame(true);
 }
 
-function burst(x: number, y: number, color: string, count: number): void {
-  for (let i = 0; i < count; i += 1) {
-    particles.push({
+function burst(x: number, y: number, color: string): void {
+  for (let i = 0; i < 18; i += 1) {
+    sparks.push({
       x,
       y,
-      vx: (Math.random() - 0.5) * 260,
-      vy: -90 - Math.random() * 180,
-      life: 360 + Math.random() * 320,
-      color,
-      size: 3 + Math.random() * 5
+      vx: (Math.random() - 0.5) * 270,
+      vy: -80 - Math.random() * 160,
+      life: 420 + Math.random() * 240,
+      color
     });
   }
-}
-
-function toast(value: string, life: number, color: string): void {
-  toasts.unshift({ text: value, life, color });
-  toasts = toasts.slice(0, 3);
 }
 
 function render(delta: number): void {
   ctx.save();
   if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
-  drawBackground(delta);
-  pickups.forEach(drawPickup);
-  hazards.forEach(drawHazard);
-  drawPlayer(delta);
-  drawParticles(delta);
-  drawCanvasHud();
-  drawToasts(delta);
+  drawRoom(delta);
+  falling.forEach(drawFalling);
+  drawPlayer();
+  drawSparks();
+  drawGameText();
   ctx.restore();
 }
 
-function drawCanvasHud(): void {
-  rect(24, 22, 284, 70, "rgba(5,9,16,0.72)");
-  outline(24, 22, 284, 70, "rgba(139,215,255,0.55)", 3);
-  text(levelNames[level], 42, 36, 18, "#f4cf63");
-  text("Collect records. Melt the block. Clear the noise.", 42, 62, 13, "#d7f6ff");
-  if (melt >= 100) text("MELT READY", WIDTH - 54, 38, 23, "#f4cf63", "right");
+function drawRoom(delta: number): void {
+  const pulse = 1 + beatPulse * 0.08;
+  rect(0, 0, WIDTH, HEIGHT, "#101526");
+  rect(0, 0, WIDTH, 92, "#090d18");
+  rect(0, 420, WIDTH, 156, "#16101f");
+  for (let x = 0; x < WIDTH; x += 64) {
+    rect(x, 420, 34, 156, x % 128 === 0 ? "#211833" : "#181124");
+  }
+  rect(110, 108, 804, 276, "#151f31");
+  stroke(110, 108, 804, 276, "#4a6177", 5);
+  rect(148, 132, 728, 48, "#0c101c");
+  label("PRIVATE ROOM", WIDTH / 2, 145, 26 * pulse, "#8bd7ff", "center");
+  label("KEEP THE PERFORMANCE IN FOCUS", WIDTH / 2, 188, 16, "#f4cf63", "center");
+  for (const laneX of lanes) {
+    rect(laneX - 44, 400, 88, 10, laneX === lanes[lane] ? "#f4cf63" : "#52677c");
+  }
+  rect(832, 226, 54, 92, "#f4cf63");
+  rect(846, 318, 24, 84, "#8bd7ff");
+  rect(802, 396, 112, 10, "#f4cf63");
+}
+
+function drawPlayer(): void {
+  const x = lanes[lane] - 34;
+  const y = 352 + Math.sin(performance.now() / 110) * 3;
+  rect(x + 5, y + 24, 58, 54, "#07090f");
+  rect(x + 12, y + 30, 44, 26, "#1d2536");
+  rect(x + 10, y + 2, 48, 26, "#b77755");
+  rect(x + 8, y, 52, 10, "#05070a");
+  rect(x + 16, y + 12, 14, 6, "#05070a");
+  rect(x + 40, y + 12, 14, 6, "#05070a");
+  rect(x + 8, y + 56, 58, 16, "#f4cf63");
+  rect(x + 17, y + 78, 14, 14, "#d7f6ff");
+  rect(x + 45, y + 78, 14, 14, "#d7f6ff");
+}
+
+function drawFalling(item: Falling): void {
+  const x = lanes[item.lane] + Math.sin(item.wobble) * 9;
+  const y = item.y;
+  if (item.kind === "talk") {
+    rect(x - 58, y, 116, 46, "#eef6ff");
+    stroke(x - 58, y, 116, 46, "#080b13", 4);
+    rect(x - 20, y + 44, 22, 16, "#eef6ff");
+    label("TALK", x, y + 13, 20, "#080b13", "center");
+  } else if (item.kind === "camera") {
+    rect(x - 44, y + 8, 88, 52, "#080b13");
+    rect(x - 24, y - 4, 48, 22, "#28344a");
+    rect(x + 20, y + 24, 32, 18, "#f4cf63");
+    rect(x - 12, y + 24, 24, 24, "#8bd7ff");
+  } else if (item.kind === "record") {
+    rect(x - 30, y, 60, 60, "#f4cf63");
+    rect(x - 18, y + 12, 36, 36, "#080b13");
+    rect(x - 5, y + 25, 10, 10, "#f4cf63");
+  } else {
+    rect(x - 12, y, 24, 70, "#8bd7ff");
+    rect(x - 42, y + 24, 84, 14, "#d7f6ff");
+    rect(x - 20, y + 14, 40, 34, "#f4cf63");
+  }
+}
+
+function drawSparks(): void {
+  sparks.forEach((spark) => rect(spark.x, spark.y, 5, 5, spark.color));
+}
+
+function drawGameText(): void {
+  label("Dodge TALK + FLASH. Catch RECORDS + LIGHT.", 36, 28, 18, "#d7f6ff");
+  if (silence >= 100) label("SILENCE READY", WIDTH - 40, 28, 24, "#f4cf63", "right");
 }
 
 function frame(time: number): void {
@@ -677,153 +444,124 @@ function frame(time: number): void {
 }
 
 function syncHud(): void {
-  const wholeScore = Math.floor(score);
-  if (wholeScore > bestScore) {
-    bestScore = wholeScore;
-    window.localStorage.setItem(bestKey, String(bestScore));
+  const whole = Math.floor(score);
+  if (whole > best) {
+    best = whole;
+    localStorage.setItem(bestKey, String(best));
   }
-  scoreEl.textContent = wholeScore.toLocaleString();
-  bestEl.textContent = bestScore.toLocaleString();
+  scoreEl.textContent = whole.toLocaleString();
+  bestEl.textContent = best.toLocaleString();
   comboEl.textContent = `x${combo}`;
-  iceEl.textContent = `${ice}`;
-  revealEl.textContent = `${Math.floor(reveal)}%`;
-  meltMeter.value = melt;
-  shieldMeter.value = shield;
-  meltBtn.disabled = melt < 100 || state !== "playing";
-  meltBtn.textContent = melt >= 100 ? "MELT!" : "Melt";
+  focusEl.textContent = `${focus}`;
+  roomEl.textContent = `${Math.floor(room)}%`;
+  silenceMeter.value = silence;
+  roomMeter.value = room;
+  silenceBtn.disabled = silence < 100 || state !== "playing";
+  silenceBtn.textContent = silence >= 100 ? "SILENCE!" : "Silence";
 }
 
-function move(direction: -1 | 1): void {
-  if (state === "ready") void startGame(soundEnabled);
-  if (state !== "playing") return;
-  lane = Math.max(0, Math.min(2, lane + direction)) as Lane;
-}
-
-async function ensureAudio(startEnabled: boolean): Promise<void> {
+async function ensureAudio(enabled: boolean): Promise<void> {
   audio ??= new AudioEngine();
-  soundEnabled = startEnabled;
-  audio.setMuted(!soundEnabled);
-  audioBtn.setAttribute("aria-pressed", String(soundEnabled));
-  audioBtn.textContent = soundEnabled ? "Sound on ✓" : "Sound off";
-  if (soundEnabled) {
+  soundOn = enabled;
+  audio.setMuted(!enabled);
+  audioBtn.textContent = enabled ? "Sound on ✓" : "Sound off";
+  audioBtn.setAttribute("aria-pressed", String(enabled));
+  if (enabled) {
     await audio.start();
-    audio.powerOn();
+    audio.startCue();
   }
 }
 
 async function startGame(withSound: boolean): Promise<void> {
   await ensureAudio(withSound);
   state = "playing";
+  lane = 1;
   score = 0;
   combo = 1;
-  ice = 3;
-  reveal = 0;
-  melt = 35;
-  shield = 0;
-  level = 0;
-  lane = 1;
-  hazards = [];
-  pickups = [];
-  particles = [];
-  toasts = [];
-  spawnTimer = 360;
-  pickupTimer = 420;
-  waveTimer = 0;
+  focus = 3;
+  room = 0;
+  silence = 24;
+  spawnTimer = 420;
+  falling = [];
+  sparks = [];
   overlay.classList.add("hidden");
   pauseBtn.textContent = "Pause";
-  toast("Episode 1: ice block drop", 1100, "#8bd7ff");
 }
 
-function endGame(): void {
+function endGame(won: boolean): void {
   state = "over";
   audio?.stop();
-  const won = reveal >= 100;
-  episodeLabel.textContent = won ? "Date revealed. The city heard it." : "Run frozen.";
-  stateLabel.innerHTML = `Score <b>${Math.floor(score).toLocaleString()}</b>. Best <b>${bestScore.toLocaleString()}</b>. ${won ? "You melted the block." : "Collect sparks sooner and save Melt for crowded lanes."}`;
+  episodeLabel.textContent = won ? "Room controlled." : "Focus broken.";
+  stateLabel.innerHTML = won
+    ? `You kept the room locked in. Score <b>${Math.floor(score).toLocaleString()}</b>.`
+    : `The commentary got too loud. Score <b>${Math.floor(score).toLocaleString()}</b>.`;
   primaryBtn.textContent = "Run it back with sound";
   quietBtn.textContent = "Run it back quiet";
   overlay.classList.remove("hidden");
 }
 
+function move(direction: -1 | 1): void {
+  if (state === "ready") void startGame(soundOn);
+  if (state !== "playing") return;
+  lane = Math.max(0, Math.min(3, lane + direction)) as Lane;
+}
+
 function togglePause(): void {
   if (state === "ready") return;
   if (state === "over") {
-    void startGame(soundEnabled);
+    void startGame(soundOn);
     return;
   }
   state = state === "playing" ? "paused" : "playing";
   pauseBtn.textContent = state === "paused" ? "Resume" : "Pause";
   episodeLabel.textContent = "Paused";
-  stateLabel.textContent = "Take a breath. Resume when you are ready.";
+  stateLabel.textContent = "Resume when you are ready.";
   primaryBtn.textContent = "Resume";
-  quietBtn.textContent = soundEnabled ? "Mute and resume" : "Sound on";
+  quietBtn.textContent = soundOn ? "Mute and resume" : "Sound on";
   overlay.classList.toggle("hidden", state === "playing");
-  if (state === "playing" && soundEnabled) {
-    void audio?.start();
-  } else {
-    audio?.stop();
-  }
+  if (state === "playing" && soundOn) void audio?.start();
+  else audio?.stop();
 }
 
 primaryBtn.addEventListener("click", () => {
-  if (state === "paused") {
-    togglePause();
-    return;
-  }
-  void startGame(true);
+  if (state === "paused") togglePause();
+  else void startGame(true);
 });
-
 quietBtn.addEventListener("click", () => {
   if (state === "paused") {
-    soundEnabled = false;
+    soundOn = false;
     audio?.setMuted(true);
     togglePause();
-    return;
+  } else {
+    void startGame(false);
   }
-  void startGame(false);
 });
-
 leftBtn.addEventListener("click", () => move(-1));
 rightBtn.addEventListener("click", () => move(1));
-meltBtn.addEventListener("click", triggerMelt);
+silenceBtn.addEventListener("click", useSilence);
 pauseBtn.addEventListener("click", togglePause);
-audioBtn.addEventListener("click", () => {
-  soundEnabled = !soundEnabled;
-  void ensureAudio(soundEnabled);
-  if (soundEnabled) toast("sound check", 800, "#f4cf63");
-});
+audioBtn.addEventListener("click", () => void ensureAudio(!soundOn));
 
 window.addEventListener("keydown", (event) => {
   if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") move(-1);
   if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") move(1);
-  if (event.key === "ArrowUp" || event.key.toLowerCase() === "w" || event.key === " ") {
+  if (event.key === " " || event.key === "ArrowUp") {
     event.preventDefault();
-    triggerMelt();
+    useSilence();
   }
   if (event.key.toLowerCase() === "p") togglePause();
-  if (event.key === "Enter" && state !== "playing") void startGame(true);
 });
 
 let touchStartX = 0;
-let touchStartY = 0;
 canvas.addEventListener("touchstart", (event) => {
   touchStartX = event.touches[0]?.clientX ?? 0;
-  touchStartY = event.touches[0]?.clientY ?? 0;
 });
-
 canvas.addEventListener("touchend", (event) => {
   const endX = event.changedTouches[0]?.clientX ?? touchStartX;
-  const endY = event.changedTouches[0]?.clientY ?? touchStartY;
   const dx = endX - touchStartX;
-  const dy = endY - touchStartY;
-  if (Math.abs(dx) < 18 && Math.abs(dy) < 18) {
-    if (state === "ready") void startGame(true);
-    else triggerMelt();
-    return;
-  }
-  if (Math.abs(dx) > Math.abs(dy)) move(dx > 0 ? 1 : -1);
-  else if (dy < -24) triggerMelt();
+  if (Math.abs(dx) < 20) useSilence();
+  else move(dx > 0 ? 1 : -1);
 });
 
-bestEl.textContent = bestScore.toLocaleString();
+bestEl.textContent = best.toLocaleString();
 requestAnimationFrame(frame);

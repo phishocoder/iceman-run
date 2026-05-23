@@ -16,6 +16,7 @@
 - Fan accessibility: one-screen arcade loop, immediate start, keyboard/touch controls, short runs, score and streak.
 - Rollout lore: the Toronto ice-block release-date stunt became the central "melt the date" objective.
 - Livestream/event lore: CN Tower and bot-farm imagery became checkpoints and hazard waves.
+- Video coverage: the "Janice STFU" visual is described as clean/futuristic, simple but stylish, with Drake performing directly to camera and moving through crowded rooms/private gathering energy. The rebuild uses that as a 16-bit private-room performance game rather than the earlier ice-runner format.
 
 ## Source links
 
