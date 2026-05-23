@@ -14,6 +14,8 @@
 - Noise/gossip pressure: "Janice" is treated as a symbolic chatter/gossip/media hazard, not a real named target.
 - Sample lineage: the "follow" idea becomes lane-chasing enemies and collectible records, without copying the source song's melody or audio.
 - Fan accessibility: one-screen arcade loop, immediate start, keyboard/touch controls, short runs, score and streak.
+- Rollout lore: the Toronto ice-block release-date stunt became the central "melt the date" objective.
+- Livestream/event lore: CN Tower and bot-farm imagery became checkpoints and hazard waves.
 
 ## Source links
 
