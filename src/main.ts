@@ -39,12 +39,12 @@ function mustQuery<T extends Element>(selector: string): T {
 
 app.innerHTML = `
   <main class="shell">
-    <section class="game-card" aria-label="Janice STFU 16-bit arcade game">
+    <section class="game-card" aria-label="Janice STFU 64-bit arcade game">
       <header class="topbar">
         <div class="brand-block">
           <span class="mark" aria-hidden="true">◆</span>
           <div>
-            <p class="kicker">16-bit private-room arcade</p>
+            <p class="kicker">64-bit private-room arcade</p>
             <h1>JANICE ROOM</h1>
           </div>
         </div>
@@ -58,7 +58,7 @@ app.innerHTML = `
       </header>
 
       <div class="stage-wrap">
-        <canvas id="game" width="${WIDTH}" height="${HEIGHT}" aria-label="Playable 16-bit party room game"></canvas>
+        <canvas id="game" width="${WIDTH}" height="${HEIGHT}" aria-label="Playable 64-bit party room game"></canvas>
         <div class="overlay" id="overlay">
           <div class="overlay-panel">
             <p class="episode" id="episodeLabel">One room. One performance. Too much commentary.</p>
@@ -368,37 +368,79 @@ function render(delta: number): void {
 
 function drawRoom(delta: number): void {
   const pulse = 1 + beatPulse * 0.08;
-  rect(0, 0, WIDTH, HEIGHT, "#101526");
-  rect(0, 0, WIDTH, 92, "#090d18");
-  rect(0, 420, WIDTH, 156, "#16101f");
-  for (let x = 0; x < WIDTH; x += 64) {
-    rect(x, 420, 34, 156, x % 128 === 0 ? "#211833" : "#181124");
+  const wall = ctx.createLinearGradient(0, 0, 0, HEIGHT);
+  wall.addColorStop(0, "#0b1224");
+  wall.addColorStop(0.48, "#18253a");
+  wall.addColorStop(1, "#120d1c");
+  ctx.fillStyle = wall;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+  rect(0, 0, WIDTH, 92, "rgba(6, 10, 20, 0.82)");
+  for (let y = 92; y < 410; y += 34) {
+    rect(0, y, WIDTH, 3, "rgba(139, 215, 255, 0.05)");
   }
-  rect(110, 108, 804, 276, "#151f31");
-  stroke(110, 108, 804, 276, "#4a6177", 5);
-  rect(148, 132, 728, 48, "#0c101c");
-  label("PRIVATE ROOM", WIDTH / 2, 145, 26 * pulse, "#8bd7ff", "center");
-  label("KEEP THE PERFORMANCE IN FOCUS", WIDTH / 2, 188, 16, "#f4cf63", "center");
+
+  const floor = ctx.createLinearGradient(0, 398, 0, HEIGHT);
+  floor.addColorStop(0, "#2b1737");
+  floor.addColorStop(1, "#0d0814");
+  ctx.fillStyle = floor;
+  ctx.fillRect(0, 398, WIDTH, 178);
+  for (let x = -120; x < WIDTH + 120; x += 88) {
+    rect(x, 398, 42, 178, x % 176 === 0 ? "rgba(244, 207, 99, 0.08)" : "rgba(139, 215, 255, 0.06)");
+  }
+
+  rect(78, 108, 868, 284, "#172034");
+  rect(96, 124, 832, 246, "#202a42");
+  stroke(78, 108, 868, 284, "#617891", 5);
+  rect(142, 132, 740, 54, "#090d18");
+  label("PRIVATE ROOM", WIDTH / 2, 145, 28 * pulse, "#8bd7ff", "center");
+  label("DIRECT TO CAMERA. KEEP THE ROOM QUIET.", WIDTH / 2, 192, 16, "#f4cf63", "center");
+
+  rect(118, 240, 156, 84, "rgba(139, 215, 255, 0.18)");
+  rect(750, 230, 162, 96, "rgba(244, 207, 99, 0.14)");
+  stroke(118, 240, 156, 84, "#40556d", 3);
+  stroke(750, 230, 162, 96, "#5b4d25", 3);
+
   for (const laneX of lanes) {
-    rect(laneX - 44, 400, 88, 10, laneX === lanes[lane] ? "#f4cf63" : "#52677c");
+    const selected = laneX === lanes[lane];
+    rect(laneX - 60, 394, 120, 12, selected ? "#f4cf63" : "#52677c");
+    rect(laneX - 44, 406, 88, 9, selected ? "#fff3a1" : "#28354a");
   }
-  rect(832, 226, 54, 92, "#f4cf63");
-  rect(846, 318, 24, 84, "#8bd7ff");
-  rect(802, 396, 112, 10, "#f4cf63");
+
+  rect(835, 212, 66, 106, "#f4cf63");
+  rect(846, 226, 44, 74, "#ffe27d");
+  rect(858, 318, 24, 84, "#8bd7ff");
+  rect(816, 396, 108, 12, "#f4cf63");
 }
 
 function drawPlayer(): void {
-  const x = lanes[lane] - 34;
-  const y = 352 + Math.sin(performance.now() / 110) * 3;
-  rect(x + 5, y + 24, 58, 54, "#07090f");
-  rect(x + 12, y + 30, 44, 26, "#1d2536");
-  rect(x + 10, y + 2, 48, 26, "#b77755");
-  rect(x + 8, y, 52, 10, "#05070a");
-  rect(x + 16, y + 12, 14, 6, "#05070a");
-  rect(x + 40, y + 12, 14, 6, "#05070a");
-  rect(x + 8, y + 56, 58, 16, "#f4cf63");
-  rect(x + 17, y + 78, 14, 14, "#d7f6ff");
-  rect(x + 45, y + 78, 14, 14, "#d7f6ff");
+  const x = lanes[lane] - 58;
+  const y = 300 + Math.sin(performance.now() / 120) * 4;
+
+  rect(x + 22, y + 122, 24, 18, "#d7f6ff");
+  rect(x + 74, y + 122, 24, 18, "#d7f6ff");
+  rect(x + 16, y + 84, 34, 44, "#080b13");
+  rect(x + 70, y + 84, 34, 44, "#080b13");
+
+  rect(x + 8, y + 48, 104, 54, "#080b13");
+  rect(x + 18, y + 56, 84, 34, "#1f2d42");
+  rect(x + 16, y + 46, 90, 14, "#f4cf63");
+  rect(x + 34, y + 64, 52, 10, "#fff3a1");
+
+  rect(x + 24, y + 6, 72, 54, "#b77755");
+  rect(x + 18, y, 82, 18, "#12151c");
+  rect(x + 24, y + 15, 16, 18, "#12151c");
+  rect(x + 80, y + 15, 16, 18, "#12151c");
+  rect(x + 26, y + 27, 68, 24, "#21120f");
+  rect(x + 42, y + 20, 14, 7, "#06080d");
+  rect(x + 66, y + 20, 14, 7, "#06080d");
+  rect(x + 52, y + 35, 22, 7, "#f0b68d");
+
+  rect(x + 12, y + 60, 18, 46, "#090d18");
+  rect(x + 92, y + 60, 18, 46, "#090d18");
+  rect(x + 104, y + 92, 30, 10, "#f4cf63");
+  rect(x + 130, y + 88, 18, 18, "#d7f6ff");
+  rect(x + 148, y + 93, 22, 6, "#8bd7ff");
 }
 
 function drawFalling(item: Falling): void {
@@ -430,7 +472,9 @@ function drawSparks(): void {
 }
 
 function drawGameText(): void {
-  label("Dodge TALK + FLASH. Catch RECORDS + LIGHT.", 36, 28, 18, "#d7f6ff");
+  rect(22, 18, 440, 40, "rgba(5, 9, 18, 0.62)");
+  label("DODGE TALK + FLASH", 38, 25, 20, "#d7f6ff");
+  label("CATCH RECORDS + LIGHT", 252, 25, 20, "#f4cf63");
   if (silence >= 100) label("SILENCE READY", WIDTH - 40, 28, 24, "#f4cf63", "right");
 }
 

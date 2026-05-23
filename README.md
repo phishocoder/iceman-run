@@ -1,6 +1,6 @@
 # JANICE ROOM
 
-A mobile-first 16-bit browser arcade game inspired by public reporting around Drake's "Janice STFU" video and its Lykke Li "I Follow Rivers" sample/interpolation.
+A mobile-first 64-bit browser arcade game inspired by public reporting around Drake's "Janice STFU" video and its Lykke Li "I Follow Rivers" sample/interpolation.
 
 ## Gameplay
 

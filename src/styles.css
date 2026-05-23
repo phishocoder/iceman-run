@@ -10,8 +10,8 @@
   --gold-soft: #fff3a1;
   --cyan: #8bd7ff;
   --ice: #d7f6ff;
-  --ink: #06101e;
-  --panel: #101a2d;
+  --ink: #080f1c;
+  --panel: #162037;
   --line: rgba(215, 246, 255, 0.34);
   --danger: #ff5f79;
 }
@@ -44,10 +44,10 @@ button {
   place-items: start center;
   padding: max(14px, env(safe-area-inset-top)) 12px max(16px, env(safe-area-inset-bottom));
   background:
-    linear-gradient(180deg, rgba(139, 215, 255, 0.14), transparent 30%),
-    radial-gradient(circle at 74% 10%, rgba(244, 207, 99, 0.18), transparent 20%),
-    radial-gradient(circle at 18% 94%, rgba(139, 215, 255, 0.16), transparent 26%),
-    #06101e;
+    linear-gradient(180deg, rgba(139, 215, 255, 0.16), transparent 28%),
+    radial-gradient(circle at 74% 10%, rgba(244, 207, 99, 0.22), transparent 22%),
+    radial-gradient(circle at 18% 94%, rgba(139, 215, 255, 0.16), transparent 28%),
+    #080f1c;
 }
 
 .game-card {
@@ -59,9 +59,10 @@ button {
 .topbar,
 .controls,
 .meter-row {
-  border: 4px solid rgba(139, 215, 255, 0.3);
-  background: rgba(16, 26, 45, 0.94);
-  box-shadow: 0 0 0 4px #030810, 0 18px 50px rgba(0, 0, 0, 0.4);
+  border: 3px solid rgba(139, 215, 255, 0.36);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(31, 44, 72, 0.96), rgba(13, 19, 34, 0.96));
+  box-shadow: 0 0 0 3px #030810, 0 18px 50px rgba(0, 0, 0, 0.44);
 }
 
 .topbar {
@@ -83,7 +84,8 @@ button {
   place-items: center;
   width: 54px;
   height: 54px;
-  border: 4px solid var(--gold);
+  border: 3px solid var(--gold);
+  border-radius: 6px;
   color: var(--gold);
   background: #050912;
   box-shadow: 5px 5px 0 #000;
@@ -103,7 +105,7 @@ h1 {
   line-height: 0.88;
   letter-spacing: 0;
   white-space: nowrap;
-  text-shadow: 5px 5px 0 #000;
+  text-shadow: 4px 4px 0 #000, 0 0 18px rgba(244, 207, 99, 0.18);
 }
 
 .stat-grid {
@@ -117,8 +119,9 @@ h1 {
   gap: 2px;
   min-height: 58px;
   padding: 8px 6px;
-  border: 3px solid rgba(244, 207, 99, 0.48);
-  background: #050912;
+  border: 2px solid rgba(244, 207, 99, 0.52);
+  border-radius: 6px;
+  background: linear-gradient(180deg, #0a0f1d, #050912);
   text-align: center;
   box-shadow: 4px 4px 0 #000;
 }
@@ -140,9 +143,10 @@ h1 {
 
 .stage-wrap {
   position: relative;
-  border: 5px solid var(--ice);
-  background: #06101e;
-  box-shadow: 0 0 0 4px #030810, 0 24px 66px rgba(0, 0, 0, 0.48);
+  border: 4px solid var(--ice);
+  border-radius: 8px;
+  background: #080f1c;
+  box-shadow: 0 0 0 3px #030810, 0 24px 66px rgba(0, 0, 0, 0.48);
   overflow: hidden;
 }
 
@@ -173,8 +177,9 @@ canvas {
 .overlay-panel {
   width: min(560px, 100%);
   padding: 18px;
-  border: 4px solid var(--gold);
-  background: rgba(5, 9, 18, 0.96);
+  border: 3px solid var(--gold);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(5, 9, 18, 0.98));
   text-align: center;
   box-shadow: 9px 9px 0 #000;
 }
@@ -208,9 +213,9 @@ canvas {
 #quietBtn,
 .controls button {
   min-height: 52px;
-  border: 3px solid var(--gold);
-  border-radius: 0;
-  background: #050912;
+  border: 2px solid var(--gold);
+  border-radius: 6px;
+  background: linear-gradient(180deg, #10182b, #050912);
   color: var(--gold-soft);
   cursor: pointer;
   box-shadow: 5px 5px 0 #000;
@@ -243,7 +248,8 @@ canvas {
 progress {
   width: 100%;
   height: 18px;
-  border: 3px solid rgba(215, 246, 255, 0.4);
+  border: 2px solid rgba(215, 246, 255, 0.4);
+  border-radius: 6px;
   background: #050912;
 }
 
@@ -324,11 +330,11 @@ progress::-moz-progress-bar {
   }
 
   .kicker {
-    font-size: 10px;
+    font-size: 9px;
   }
 
   h1 {
-    font-size: clamp(30px, 11vw, 46px);
+    font-size: clamp(28px, 10vw, 43px);
     white-space: normal;
   }
 
