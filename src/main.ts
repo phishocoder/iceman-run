@@ -176,18 +176,27 @@ const player: Actor = {
 class AudioEngine {
   private readonly audioContext = new AudioContext();
   private readonly master = this.audioContext.createGain();
+  private readonly musicBus = this.audioContext.createGain();
+  private readonly drumBus = this.audioContext.createGain();
+  private readonly fxBus = this.audioContext.createGain();
   private timer: number | undefined;
   private step = 0;
 
   constructor() {
-    this.master.gain.value = 0.36;
+    this.master.gain.value = 0.42;
+    this.musicBus.gain.value = 0.72;
+    this.drumBus.gain.value = 0.95;
+    this.fxBus.gain.value = 0.9;
+    this.musicBus.connect(this.master);
+    this.drumBus.connect(this.master);
+    this.fxBus.connect(this.master);
     this.master.connect(this.audioContext.destination);
   }
 
   async start(): Promise<void> {
     await this.audioContext.resume();
     if (this.timer) return;
-    this.timer = window.setInterval(() => this.playStep(), 120);
+    this.timer = window.setInterval(() => this.playStep(), 115);
   }
 
   stop(): void {
@@ -197,44 +206,60 @@ class AudioEngine {
   }
 
   setMuted(muted: boolean): void {
-    this.master.gain.setTargetAtTime(muted ? 0.0001 : 0.36, this.audioContext.currentTime, 0.02);
+    this.master.gain.setTargetAtTime(muted ? 0.0001 : 0.42, this.audioContext.currentTime, 0.02);
   }
 
   powerOn(): void {
-    this.tone(277.18, 0.12, "square", 0.16);
-    window.setTimeout(() => this.tone(415.3, 0.12, "square", 0.16), 95);
-    window.setTimeout(() => this.tone(554.37, 0.18, "square", 0.18), 190);
-    window.setTimeout(() => this.noise(0.07, 0.08), 260);
+    [207.65, 277.18, 415.3, 554.37, 830.61].forEach((note, index) => {
+      window.setTimeout(() => this.tone(note, 0.09 + index * 0.012, "square", 0.18, this.fxBus), index * 72);
+    });
+    window.setTimeout(() => this.snare(0.11, 0.18), 330);
   }
 
   hit(): void {
-    this.noise(0.16, 0.18);
-    this.tone(92.5, 0.12, "sawtooth", 0.12);
+    this.noise(0.16, 0.2, this.fxBus);
+    this.tone(92.5, 0.12, "sawtooth", 0.15, this.fxBus);
   }
 
   collect(): void {
-    this.tone(830.61, 0.06, "square", 0.14);
-    window.setTimeout(() => this.tone(987.77, 0.075, "square", 0.12), 58);
+    this.tone(830.61, 0.06, "square", 0.16, this.fxBus);
+    window.setTimeout(() => this.tone(987.77, 0.075, "square", 0.14, this.fxBus), 58);
   }
 
   melt(): void {
     [277.18, 369.99, 554.37, 739.99].forEach((note, index) => {
-      window.setTimeout(() => this.tone(note, 0.12, "square", 0.16), index * 48);
+      window.setTimeout(() => this.tone(note, 0.13, "square", 0.19, this.fxBus), index * 48);
     });
   }
 
   private playStep(): void {
     const roots = [138.59, 207.65, 164.81, 246.94]; // C#m, G#m, E, Emaj7 color without copying the hook.
-    const icyLead = [415.3, 0, 493.88, 0, 622.25, 554.37, 493.88, 0, 369.99, 0, 415.3, 466.16, 493.88, 0, 369.99, 0];
-    const index = this.step % icyLead.length;
+    const arp = [
+      554.37, 622.25, 830.61, 739.99,
+      415.3, 493.88, 622.25, 493.88,
+      329.63, 415.3, 493.88, 554.37,
+      493.88, 622.25, 830.61, 987.77
+    ];
+    const lead = [
+      0, 0, 739.99, 0, 622.25, 0, 554.37, 493.88,
+      0, 622.25, 0, 739.99, 830.61, 0, 622.25, 0,
+      0, 0, 554.37, 0, 493.88, 0, 415.3, 369.99,
+      0, 415.3, 0, 493.88, 554.37, 0, 493.88, 0
+    ];
+    const index = this.step % 32;
     const root = roots[Math.floor(this.step / 8) % roots.length];
-    if (this.step % 4 === 0) this.tone(root, 0.14, "triangle", 0.11);
-    if (icyLead[index]) this.tone(icyLead[index], 0.07, "square", 0.075);
-    if (this.step % 8 === 2 || this.step % 8 === 6) this.noise(0.03, 0.07);
+
+    if (index % 8 === 0) this.kick();
+    if (index % 8 === 4) this.snare();
+    if (index % 2 === 1) this.hat();
+    if (index % 4 === 0) this.tone(root, 0.18, "triangle", 0.18, this.musicBus);
+    if (index % 2 === 0) this.tone(root * 2, 0.08, "square", 0.08, this.musicBus);
+    this.tone(arp[index % arp.length], 0.045, "square", index % 4 === 0 ? 0.11 : 0.075, this.musicBus);
+    if (lead[index] > 0) this.tone(lead[index], 0.1, "square", 0.12, this.musicBus);
     this.step += 1;
   }
 
-  private tone(frequency: number, duration: number, type: OscillatorType, gainValue: number): void {
+  private tone(frequency: number, duration: number, type: OscillatorType, gainValue: number, destination: AudioNode): void {
     const now = this.audioContext.currentTime;
     const oscillator = this.audioContext.createOscillator();
     const gain = this.audioContext.createGain();
@@ -243,12 +268,35 @@ class AudioEngine {
     gain.gain.setValueAtTime(0.0001, now);
     gain.gain.exponentialRampToValueAtTime(gainValue, now + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-    oscillator.connect(gain).connect(this.master);
+    oscillator.connect(gain).connect(destination);
     oscillator.start(now);
     oscillator.stop(now + duration + 0.02);
   }
 
-  private noise(duration: number, gainValue: number): void {
+  private kick(): void {
+    const now = this.audioContext.currentTime;
+    const oscillator = this.audioContext.createOscillator();
+    const gain = this.audioContext.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(120, now);
+    oscillator.frequency.exponentialRampToValueAtTime(42, now + 0.11);
+    gain.gain.setValueAtTime(0.26, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.13);
+    oscillator.connect(gain).connect(this.drumBus);
+    oscillator.start(now);
+    oscillator.stop(now + 0.14);
+  }
+
+  private snare(duration = 0.055, gainValue = 0.13): void {
+    this.noise(duration, gainValue, this.drumBus);
+    this.tone(196, duration, "triangle", gainValue * 0.55, this.drumBus);
+  }
+
+  private hat(): void {
+    this.noise(0.018, 0.075, this.drumBus);
+  }
+
+  private noise(duration: number, gainValue: number, destination: AudioNode): void {
     const buffer = this.audioContext.createBuffer(1, this.audioContext.sampleRate * duration, this.audioContext.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < data.length; i += 1) data[i] = Math.random() * 2 - 1;
@@ -256,7 +304,7 @@ class AudioEngine {
     const gain = this.audioContext.createGain();
     gain.gain.value = gainValue;
     source.buffer = buffer;
-    source.connect(gain).connect(this.master);
+    source.connect(gain).connect(destination);
     source.start();
   }
 }
